@@ -1,0 +1,121 @@
+
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+/* this is the style for the page - as usual */
+body {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  margin: auto;
+  position: relative;
+  width: 960px;
+}
+
+form {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+}
+
+</style>
+<!-- this is for the button which changes the view from size data to the count data -->
+<form>
+  <label><input type="radio" name="mode" value="size"> Size</label>
+  <label><input type="radio" name="mode" value="count" checked> Count</label>
+</form>
+<!-- this includes d3 -->
+<script src="http://d3js.org/d3.v3.min.js"></script>
+<script>
+// setting up the variables needed
+var width = 960,
+    height = 700,
+    radius = Math.min(width, height) / 2,
+    // Scale funciton = These functions map an input domain to an output range.
+    // these functions take an interval and transform it into a new interval.
+    color = d3.scale.category20c();
+
+// this selects the body and appends the svg inside it
+var svg = d3.select("body").append("svg")
+    // sets the attribute for width and height of the svg
+    .attr("width", width)
+    .attr("height", height)
+  // appends the group element
+  // The SVG Group Element is a container for all child SVG elements defined inside of it
+  .append("g")
+    // this sets the transform attribute
+    // transform attribute applies a list of transformations to an element and it's children
+    // the transformations are applied from right to left.
+    // translate this - specifies a translation by x and y.
+    // If y is not provided, it is assumed to be zero
+    // transformation where by it translates
+    //the element and its children by a given number of units in the x-axis
+    .attr("transform", "translate(" + width / 2 + "," + height * .52 + ")");
+
+//The partition layout produces adjacency diagrams: instead of drawing a link between parent and child in the hierarchy, nodes are drawn as solid areas, and their placement relative to other nodes reveals their position in the hierarchy.
+
+//The size of the nodes encodes a quantitative dimension that would be difficult to show in a node-link diagram
+var partition = d3.layout.partition()
+    .sort(null)
+    .size([2 * Math.PI, radius * radius])
+    .value(function(d) { return 1; });
+
+//Constructs a new arc generator with the default innerRadius-, outerRadius-, startAngle- and endAngle-accessor functions
+var arc = d3.svg.arc()
+    .startAngle(function(d) { return d.x; })
+    .endAngle(function(d) { return d.x + d.dx; })
+    .innerRadius(function(d) { return Math.sqrt(d.y); })
+    .outerRadius(function(d) { return Math.sqrt(d.y + d.dy); });
+
+// this is for connecting the data - via request for the json
+d3.json("flare.json", function(error, root) {
+  var path = svg.datum(root).selectAll("path")
+      .data(partition.nodes)
+    .enter().append("path")
+      .attr("display", function(d) { return d.depth ? null : "none"; }) // hides the inner ring
+      // setting the arc for the given data
+      .attr("d", arc)
+      // styling for the elements
+      .style("stroke", "#fff")
+      .style("fill", function(d) { return color((d.children ? d : d.parent).name); })
+      //As you progress in a straight line across the canvas containing the path, count the number of times you cross the path. If you have crossed an odd number of times, you are "inside" the path. If you have crossed an even number of times, you are outside the path.
+      // this is key for filling in the color where there there are gaps in the path
+      .style("fill-rule", "evenodd")
+      // this is a function defined later - to  Stash the old values for transition
+      // you can still loop over elements manually if you wish: there's an each operator which invokes an arbitrary function
+      .each(stash);
+
+  // this is taking the input from the button above to switch the view between count and size
+  d3.selectAll("input").on("change", function change() {
+    var value = this.value === "count"
+        ? function() { return 1; }
+        : function(d) { return d.size; };
+
+    path
+        // this is setting up the partition as above on ln 56 - but for this view
+        .data(partition.value(value).nodes)
+      //D3’s selection.transition is a way to animate transitions when changing the DOM.
+      .transition()
+        .duration(1500)
+        .attrTween("d", arcTween);
+  });
+});
+
+// Stash the old values for transition.
+function stash(d) {
+  d.x0 = d.x;
+  d.dx0 = d.dx;
+}
+
+// Interpolate the arcs in data space.
+function arcTween(a) {
+  var i = d3.interpolate({x: a.x0, dx: a.dx0}, a);
+  return function(t) {
+    var b = i(t);
+    a.x0 = b.x;
+    a.dx0 = b.dx;
+    return arc(b);
+  };
+}
+// sets the hight for the frame element
+d3.select(self.frameElement).style("height", height + "px");
+
+</script>
